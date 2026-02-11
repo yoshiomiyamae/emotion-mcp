@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# アップロードされた立ち絵画像は除外
+data/expressions/*
+!data/expressions/.gitkeep
+
+# ユーザーの個人的な設定ファイルは除外
+data/config.json
