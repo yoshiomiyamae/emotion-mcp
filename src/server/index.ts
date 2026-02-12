@@ -59,26 +59,11 @@ async function startHttpServerIfNeeded() {
     },
   });
 
-  // プロセス終了時にHTTPサーバーも終了（自分が起動した場合のみ）
-  process.on("exit", () => {
-    if (httpServer) {
-      httpServer.kill();
-    }
-  });
-
-  process.on("SIGINT", () => {
-    if (httpServer) {
-      httpServer.kill();
-    }
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", () => {
-    if (httpServer) {
-      httpServer.kill();
-    }
-    process.exit(0);
-  });
+  // HTTPサーバーを親プロセスから切り離す
+  // Claude Codeは設定キャッシュ用に一時的にMCPサーバーを起動→終了するため、
+  // 親プロセスの終了でHTTPサーバーをkillすると、
+  // 後続のMCPサーバーインスタンスがHTTPサーバーを失う
+  httpServer.unref();
 }
 
 // HTTPサーバーを起動（非同期）
