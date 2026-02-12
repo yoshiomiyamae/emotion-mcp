@@ -118,6 +118,11 @@ const server = serve({
       return new Response("Not Found", { status: 404, headers: corsHeaders });
     }
 
+    // API: ヘルスチェック
+    if (url.pathname === "/api/health" && req.method === "GET") {
+      return Response.json({ status: "ok" }, { headers: corsHeaders });
+    }
+
     // API: 表情一覧取得
     if (url.pathname === "/api/expressions" && req.method === "GET") {
       const config = await storage.loadConfig();

@@ -21,33 +21,68 @@ const storage = new Storage(dataDir);
 // HTTPサーバーのポート番号（環境変数から取得、デフォルトは3000）
 const HTTP_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
-// HTTPサーバーを子プロセスとして起動
-const httpServerPath = new URL("./http-server.ts", import.meta.url).pathname;
-const httpServer = spawn({
-  cmd: ["bun", "run", httpServerPath],
-  cwd: process.cwd(),
-  stdout: "ignore", // stdioをMCPプロトコルで使うため、子プロセスの出力は無視
-  stderr: "ignore", // エラーもstdioに混ざらないように無視
-  env: {
-    ...process.env,
-    PORT: HTTP_PORT.toString(),
-  },
-});
+/**
+ * HTTPサーバーが既に起動しているかチェック
+ */
+async function isHttpServerRunning(port: number): Promise<boolean> {
+  try {
+    const response = await fetch(`http://localhost:${port}/api/health`, {
+      method: "GET",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
-// プロセス終了時にHTTPサーバーも終了
-process.on("exit", () => {
-  httpServer.kill();
-});
+// HTTPサーバーを子プロセスとして起動（既に起動していない場合のみ）
+let httpServer: ReturnType<typeof spawn> | null = null;
 
-process.on("SIGINT", () => {
-  httpServer.kill();
-  process.exit(0);
-});
+async function startHttpServerIfNeeded() {
+  const isRunning = await isHttpServerRunning(HTTP_PORT);
 
-process.on("SIGTERM", () => {
-  httpServer.kill();
-  process.exit(0);
-});
+  if (isRunning) {
+    console.error(`HTTP server already running on port ${HTTP_PORT}, reusing existing server`);
+    return;
+  }
+
+  console.error(`Starting HTTP server on port ${HTTP_PORT}...`);
+  const httpServerPath = new URL("./http-server.ts", import.meta.url).pathname;
+  httpServer = spawn({
+    cmd: ["bun", "run", httpServerPath],
+    cwd: process.cwd(),
+    stdout: "ignore", // stdioをMCPプロトコルで使うため、子プロセスの出力は無視
+    stderr: "ignore", // エラーもstdioに混ざらないように無視
+    env: {
+      ...process.env,
+      PORT: HTTP_PORT.toString(),
+    },
+  });
+
+  // プロセス終了時にHTTPサーバーも終了（自分が起動した場合のみ）
+  process.on("exit", () => {
+    if (httpServer) {
+      httpServer.kill();
+    }
+  });
+
+  process.on("SIGINT", () => {
+    if (httpServer) {
+      httpServer.kill();
+    }
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", () => {
+    if (httpServer) {
+      httpServer.kill();
+    }
+    process.exit(0);
+  });
+}
+
+// HTTPサーバーを起動（非同期）
+await startHttpServerIfNeeded();
 
 // HTTPサーバーに通知するための簡易的な実装
 // 実際にはHTTPサーバーを別プロセスで起動し、HTTP APIで通知する
