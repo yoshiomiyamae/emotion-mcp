@@ -10,13 +10,20 @@ import type { ChangeExpressionParams, TransitionType } from "../shared/types.js"
 
 const storage = new Storage("./data");
 
+// HTTPサーバーのポート番号（環境変数から取得、デフォルトは3000）
+const HTTP_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+
 // HTTPサーバーを子プロセスとして起動
 const httpServerPath = new URL("./http-server.ts", import.meta.url).pathname;
 const httpServer = spawn({
   cmd: ["bun", "run", httpServerPath],
   cwd: process.cwd(),
-  stdout: "inherit", // HTTPサーバーの出力をそのまま表示
-  stderr: "inherit",
+  stdout: "ignore", // stdioをMCPプロトコルで使うため、子プロセスの出力は無視
+  stderr: "ignore", // エラーもstdioに混ざらないように無視
+  env: {
+    ...process.env,
+    PORT: HTTP_PORT.toString(),
+  },
 });
 
 // プロセス終了時にHTTPサーバーも終了
@@ -48,7 +55,7 @@ async function notifyExpressionChange(
     }
 
     // HTTPサーバーのAPIに通知
-    await fetch("http://localhost:3000/api/notify-change", {
+    await fetch(`http://localhost:${HTTP_PORT}/api/notify-change`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expression, transition, duration }),
