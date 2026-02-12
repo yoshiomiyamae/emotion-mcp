@@ -49,7 +49,7 @@ async function startHttpServerIfNeeded() {
   console.error(`Starting HTTP server on port ${HTTP_PORT}...`);
   const httpServerPath = new URL("./http-server.ts", import.meta.url).pathname;
   httpServer = spawn({
-    cmd: ["bun", "run", httpServerPath],
+    cmd: [process.execPath, "run", httpServerPath],
     cwd: process.cwd(),
     stdout: "ignore", // stdioをMCPプロトコルで使うため、子プロセスの出力は無視
     stderr: "ignore", // エラーもstdioに混ざらないように無視
