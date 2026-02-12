@@ -104,10 +104,28 @@ MCPサーバーが起動すると：
 - 管理UI: http://localhost:3000/admin
 - Viewer: http://localhost:3000/viewer
 
-**💡 Tips:** Viewerの自動オープンを無効にしたい場合は環境変数を設定：
-```bash
-AUTO_OPEN_VIEWER=false
-```
+**💡 Tips:**
+
+- **Viewerの自動オープンを無効化:**
+  ```bash
+  AUTO_OPEN_VIEWER=false
+  ```
+
+- **ポート番号を変更:**
+  ```json
+  {
+    "mcpServers": {
+      "emotion-mcp": {
+        "command": "bun",
+        "args": ["run", "/absolute/path/to/emotion-mcp/src/server/index.ts"],
+        "env": {
+          "PORT": "8080"
+        }
+      }
+    }
+  }
+  ```
+  デフォルトは3000。変更した場合は `http://localhost:8080/admin` でアクセス。
 
 ### 4. 立ち絵の登録
 

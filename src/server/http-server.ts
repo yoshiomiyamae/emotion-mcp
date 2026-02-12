@@ -1,4 +1,6 @@
 import { serve, type ServerWebSocket } from "bun";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import open from "open";
 import { Storage } from "./storage.js";
 import type {
@@ -7,7 +9,12 @@ import type {
   TransitionType,
 } from "../shared/types.js";
 
-const storage = new Storage("./data");
+// プロジェクトルートの絶対パスを取得
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const projectRoot = join(__dirname, "../..");
+
+const storage = new Storage(join(projectRoot, "data"));
 
 // WebSocket接続管理
 const clients = new Set<ServerWebSocket<unknown>>();
@@ -35,8 +42,11 @@ export function broadcastExpressionChange(
   });
 }
 
+// ポート番号を環境変数から取得（デフォルト: 3000）
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+
 const server = serve({
-  port: 3000,
+  port: PORT,
   async fetch(req, server) {
     const url = new URL(req.url);
 
@@ -62,14 +72,14 @@ const server = serve({
 
     // 静的ファイル配信
     if (url.pathname === "/" || url.pathname === "/admin") {
-      const file = Bun.file("./src/client/admin/index.html");
+      const file = Bun.file(join(projectRoot, "src/client/admin/index.html"));
       return new Response(file, {
         headers: { "Content-Type": "text/html", ...corsHeaders },
       });
     }
 
     if (url.pathname === "/viewer") {
-      const file = Bun.file("./src/client/viewer/index.html");
+      const file = Bun.file(join(projectRoot, "src/client/viewer/index.html"));
       return new Response(file, {
         headers: { "Content-Type": "text/html", ...corsHeaders },
       });
@@ -79,7 +89,7 @@ const server = serve({
     if (url.pathname.startsWith("/admin/") || url.pathname.startsWith("/viewer/")) {
       const basePath = url.pathname.startsWith("/admin/") ? "admin" : "viewer";
       const fileName = url.pathname.replace(`/${basePath}/`, "");
-      const file = Bun.file(`./src/client/${basePath}/${fileName}`);
+      const file = Bun.file(join(projectRoot, "src/client", basePath, fileName));
 
       if (await file.exists()) {
         // Content-Typeを判定
@@ -101,7 +111,7 @@ const server = serve({
     // 画像配信
     if (url.pathname.startsWith("/expressions/")) {
       const fileName = url.pathname.replace("/expressions/", "");
-      const file = Bun.file(`./data/expressions/${fileName}`);
+      const file = Bun.file(join(projectRoot, "data/expressions", fileName));
       if (await file.exists()) {
         return new Response(file, { headers: corsHeaders });
       }
@@ -133,7 +143,7 @@ const server = serve({
         const id = crypto.randomUUID();
         const ext = file.name.split(".").pop();
         const fileName = `${id}.${ext}`;
-        const filePath = `./data/expressions/${fileName}`;
+        const filePath = join(projectRoot, "data/expressions", fileName);
 
         await Bun.write(filePath, file);
 
@@ -251,9 +261,9 @@ const server = serve({
 console.log(`
 🎭 Emotion MCP Server started!
 
-📍 Admin UI:  http://localhost:3000/admin
-👁️  Viewer:    http://localhost:3000/viewer
-🔌 WebSocket: ws://localhost:3000
+📍 Admin UI:  http://localhost:${PORT}/admin
+👁️  Viewer:    http://localhost:${PORT}/viewer
+🔌 WebSocket: ws://localhost:${PORT}
 
 Press Ctrl+C to stop
 `);
@@ -266,10 +276,10 @@ if (autoOpen) {
   setTimeout(async () => {
     try {
       console.log("Opening viewer in browser...");
-      await open("http://localhost:3000/viewer");
+      await open(`http://localhost:${PORT}/viewer`);
     } catch (error) {
       console.error("Failed to open browser:", error);
-      console.log("Please manually open: http://localhost:3000/viewer");
+      console.log(`Please manually open: http://localhost:${PORT}/viewer`);
     }
   }, 500);
 }
