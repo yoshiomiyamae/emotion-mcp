@@ -5,10 +5,18 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { spawn } from "bun";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import { Storage } from "./storage.js";
 import type { ChangeExpressionParams, TransitionType } from "../shared/types.js";
 
-const storage = new Storage("./data");
+// プロジェクトルートのパスを取得（絶対パス）
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const projectRoot = join(__dirname, "../..");
+const dataDir = join(projectRoot, "data");
+
+const storage = new Storage(dataDir);
 
 // HTTPサーバーのポート番号（環境変数から取得、デフォルトは3000）
 const HTTP_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
