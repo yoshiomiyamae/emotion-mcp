@@ -64,10 +64,67 @@ async function startHttpServerIfNeeded() {
   // 親プロセスの終了でHTTPサーバーをkillすると、
   // 後続のMCPサーバーインスタンスがHTTPサーバーを失う
   httpServer.unref();
+
+  // HTTPサーバーの起動を待つ
+  await waitForHttpServer(HTTP_PORT);
+}
+
+/**
+ * HTTPサーバーが応答可能になるまで待つ
+ */
+async function waitForHttpServer(port: number, maxRetries = 10): Promise<void> {
+  for (let i = 0; i < maxRetries; i++) {
+    if (await isHttpServerRunning(port)) return;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+
+/**
+ * HTTPサーバーにMCPインスタンスを登録
+ */
+async function registerMcpInstance(): Promise<void> {
+  try {
+    await fetch(`http://localhost:${HTTP_PORT}/api/mcp/register`, { method: "POST" });
+  } catch {
+    // HTTPサーバーがまだ起動していない場合は無視
+  }
+}
+
+/**
+ * HTTPサーバーからMCPインスタンスを解除
+ */
+async function unregisterMcpInstance(): Promise<void> {
+  try {
+    await fetch(`http://localhost:${HTTP_PORT}/api/mcp/unregister`, { method: "POST" });
+  } catch {
+    // HTTPサーバーが既に終了している場合は無視
+  }
 }
 
 // HTTPサーバーを起動（非同期）
 await startHttpServerIfNeeded();
+
+// HTTPサーバーにこのMCPインスタンスを登録
+await registerMcpInstance();
+
+// プロセス終了時にHTTPサーバーから登録解除
+process.on("exit", () => {
+  // 同期的にfetchはできないため、beforeExitで処理
+});
+
+process.on("beforeExit", async () => {
+  await unregisterMcpInstance();
+});
+
+process.on("SIGINT", async () => {
+  await unregisterMcpInstance();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  await unregisterMcpInstance();
+  process.exit(0);
+});
 
 // HTTPサーバーに通知するための簡易的な実装
 // 実際にはHTTPサーバーを別プロセスで起動し、HTTP APIで通知する

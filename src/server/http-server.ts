@@ -19,6 +19,9 @@ const storage = new Storage(join(projectRoot, "data"));
 // WebSocket接続管理
 const clients = new Set<ServerWebSocket<unknown>>();
 
+// MCPサーバーインスタンスの参照カウント
+let mcpRefCount = 0;
+
 /**
  * 表情変更をすべてのクライアントに通知
  */
@@ -224,6 +227,25 @@ const server = serve({
           { status: 500, headers: corsHeaders }
         );
       }
+    }
+
+    // API: MCPサーバーインスタンス登録（参照カウント+1）
+    if (url.pathname === "/api/mcp/register" && req.method === "POST") {
+      mcpRefCount++;
+      console.log(`MCP server registered. Active instances: ${mcpRefCount}`);
+      return Response.json({ refCount: mcpRefCount }, { headers: corsHeaders });
+    }
+
+    // API: MCPサーバーインスタンス解除（参照カウント-1、0になったら自動終了）
+    if (url.pathname === "/api/mcp/unregister" && req.method === "POST") {
+      mcpRefCount = Math.max(0, mcpRefCount - 1);
+      console.log(`MCP server unregistered. Active instances: ${mcpRefCount}`);
+      if (mcpRefCount === 0) {
+        console.log("No active MCP instances. Shutting down HTTP server...");
+        // レスポンスを返してから終了する
+        setTimeout(() => process.exit(0), 500);
+      }
+      return Response.json({ refCount: mcpRefCount }, { headers: corsHeaders });
     }
 
     // API: 表情変更通知（MCPサーバーから呼ばれる）
