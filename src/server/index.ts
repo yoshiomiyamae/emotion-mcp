@@ -108,21 +108,27 @@ await startHttpServerIfNeeded();
 await registerMcpInstance();
 
 // プロセス終了時にHTTPサーバーから登録解除
-process.on("exit", () => {
-  // 同期的にfetchはできないため、beforeExitで処理
-});
+// beforeExitは非同期処理を追加するとイベントループが空にならず再発火するため、
+// ガードフラグで無限ループを防止する
+let hasUnregistered = false;
+
+async function cleanupAndUnregister(): Promise<void> {
+  if (hasUnregistered) return;
+  hasUnregistered = true;
+  await unregisterMcpInstance();
+}
 
 process.on("beforeExit", async () => {
-  await unregisterMcpInstance();
+  await cleanupAndUnregister();
 });
 
 process.on("SIGINT", async () => {
-  await unregisterMcpInstance();
+  await cleanupAndUnregister();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
-  await unregisterMcpInstance();
+  await cleanupAndUnregister();
   process.exit(0);
 });
 
