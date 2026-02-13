@@ -47,7 +47,7 @@ async function startHttpServerIfNeeded() {
   }
 
   console.error(`Starting HTTP server on port ${HTTP_PORT}...`);
-  const httpServerPath = new URL("./http-server.ts", import.meta.url).pathname;
+  const httpServerPath = fileURLToPath(new URL("./http-server.ts", import.meta.url));
   httpServer = spawn({
     cmd: [process.execPath, "run", httpServerPath],
     cwd: process.cwd(),
