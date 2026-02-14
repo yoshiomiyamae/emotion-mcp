@@ -371,10 +371,15 @@ export class VrmRenderer {
   _updateBlink(delta) {
     if (!this.vrm?.expressionManager) return;
 
-    // 表情プリセットで目を閉じている場合はまばたきを抑制
-    const eyeBlendShapes = ["blink", "blinkLeft", "blinkRight"];
+    // 表情プリセットで目に影響がある場合はまばたきを抑制
+    // blink系: 直接まばたきと競合
+    // happy/relaxed: 目を細める表情で、まばたきが不自然になる
+    const eyeBlendShapes = [
+      "blink", "blinkLeft", "blinkRight",
+      "happy", "relaxed",
+    ];
     const hasEyeExpression = eyeBlendShapes.some(
-      (name) => (this.currentBlendShapes.get(name) || 0) > 0.3
+      (name) => (this.currentBlendShapes.get(name) || 0) > 0.5
     );
 
     if (hasEyeExpression) {
