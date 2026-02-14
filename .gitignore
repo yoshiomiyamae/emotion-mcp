@@ -7,5 +7,10 @@ dist/
 data/expressions/*
 !data/expressions/.gitkeep
 
+# VRMモデルとプリセット設定は除外
+data/vrm/*
+!data/vrm/.gitkeep
+data/vrm-config.json
+
 # ユーザーの個人的な設定ファイルは除外
 data/config.json
