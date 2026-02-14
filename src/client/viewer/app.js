@@ -8,6 +8,7 @@
 
 /**
  * @typedef {Object} Config
+ * @property {'2d'|'vrm'} mode
  * @property {string} defaultExpression
  * @property {Expression[]} expressions
  */
@@ -25,14 +26,33 @@ let ws = null;
 /** @type {boolean} */
 let debugMode = new URLSearchParams(window.location.search).has("debug");
 
+/** @type {'2d'|'vrm'} */
+let currentMode = "2d";
+
+/** @type {import("./vrm-renderer.js").VrmRenderer | null} */
+let vrmRenderer = null;
+
 // 初期化
 async function init() {
   if (debugMode) {
     document.getElementById("status").classList.add("show");
   }
 
-  // デフォルト表情を読み込み
-  await loadDefaultExpression();
+  // 設定を読み込んでモードを判定
+  try {
+    const res = await fetch("/api/config");
+    /** @type {Config} */
+    const config = await res.json();
+    currentMode = config.mode || "2d";
+
+    if (currentMode === "vrm") {
+      await initVrmMode();
+    } else {
+      await initImageMode(config);
+    }
+  } catch (error) {
+    console.error("Failed to load config:", error);
+  }
 
   // WebSocket接続
   connectWebSocket();
@@ -47,23 +67,47 @@ async function init() {
   }
 }
 
-// デフォルト表情を読み込んで表示
-async function loadDefaultExpression() {
+// VRMモードの初期化
+async function initVrmMode() {
   try {
-    const res = await fetch("/api/config");
-    /** @type {Config} */
-    const config = await res.json();
+    const { VrmRenderer } = await import("./vrm-renderer.js");
 
-    if (config.defaultExpression) {
-      const defaultExpr = config.expressions.find(
-        (e) => e.id === config.defaultExpression
-      );
-      if (defaultExpr) {
-        displayExpression(defaultExpr, "instant", 0);
+    const container = document.getElementById("viewer-container");
+    vrmRenderer = new VrmRenderer();
+    vrmRenderer.init(container);
+
+    // VRM設定からモデルを読み込み
+    const vrmRes = await fetch("/api/vrm/config");
+    const vrmConfig = await vrmRes.json();
+
+    if (vrmConfig.modelFileName) {
+      await vrmRenderer.loadModel(`/vrm/${vrmConfig.modelFileName}`);
+
+      // デフォルトプリセットを適用
+      if (vrmConfig.defaultPreset) {
+        const defaultPreset = vrmConfig.presets.find(
+          (p) => p.id === vrmConfig.defaultPreset
+        );
+        if (defaultPreset) {
+          vrmRenderer.applyExpression(defaultPreset, 0);
+          updateStatus(defaultPreset, "instant");
+        }
       }
     }
   } catch (error) {
-    console.error("Failed to load default expression:", error);
+    console.error("Failed to init VRM mode:", error);
+  }
+}
+
+// 2D画像モードの初期化
+async function initImageMode(config) {
+  if (config.defaultExpression) {
+    const defaultExpr = config.expressions.find(
+      (e) => e.id === config.defaultExpression
+    );
+    if (defaultExpr) {
+      displayExpression(defaultExpr, "instant", 0);
+    }
   }
 }
 
@@ -108,13 +152,22 @@ function connectWebSocket() {
 // メッセージ処理
 function handleMessage(message) {
   if (message.type === "expression-change") {
-    const { expression, transition, duration } = message.data;
-    displayExpression(expression, transition, duration);
+    const data = message.data;
+
+    if (data.mode === "vrm" && vrmRenderer) {
+      // VRMモード: ブレンドシェイプを適用
+      vrmRenderer.applyExpression(data.preset, data.duration);
+      updateStatus(data.preset, data.transition);
+    } else if (data.mode === "2d" || !data.mode) {
+      // 2Dモード（後方互換: modeフィールドがない場合も2D扱い）
+      const expression = data.expression;
+      displayExpression(expression, data.transition, data.duration);
+    }
   }
 }
 
 /**
- * 表情を表示
+ * 2D表情を表示
  * @param {Expression} expression
  * @param {TransitionType} transition
  * @param {number} duration
@@ -189,14 +242,16 @@ function updateConnectionStatus(connected) {
 }
 
 // デバッグステータスを更新
-function updateStatus(expression, transition) {
+function updateStatus(expressionOrPreset, transition) {
   if (!debugMode) return;
 
   const currentExprEl = document.getElementById("currentExpression");
   const currentTransEl = document.getElementById("currentTransition");
 
   if (currentExprEl) {
-    currentExprEl.textContent = `${expression.name} (${expression.displayName})`;
+    const name = expressionOrPreset.name || "unknown";
+    const displayName = expressionOrPreset.displayName || name;
+    currentExprEl.textContent = `${name} (${displayName})`;
   }
   if (currentTransEl) {
     currentTransEl.textContent = transition;

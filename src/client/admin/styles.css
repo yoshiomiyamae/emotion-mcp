@@ -331,3 +331,234 @@ header h1 {
   flex: initial;
   min-width: 120px;
 }
+
+/* モード切り替え */
+.mode-switch {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 30px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 4px;
+  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.mode-btn.active {
+  background: white;
+  color: #667eea;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.mode-btn:hover:not(.active) {
+  color: white;
+}
+
+/* VRMセクション */
+.vrm-section {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.section-title {
+  font-size: 1.3rem;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.section-header .section-title {
+  margin-bottom: 0;
+}
+
+.section-header .btn {
+  flex: initial;
+}
+
+/* ブレンドシェイプ一覧 */
+.blend-shape-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.blend-shape-tag {
+  background: #f0f0f0;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  color: #555;
+  font-family: monospace;
+}
+
+/* ブレンドシェイプスライダー */
+.blend-shape-sliders {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 8px 0;
+}
+
+.slider-label {
+  min-width: 120px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.slider-input {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  outline: none;
+}
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #667eea;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.slider-value {
+  min-width: 45px;
+  text-align: right;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #999;
+}
+
+/* プリセットカード */
+.preset-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.preset-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+}
+
+.preset-card.is-default {
+  border: 3px solid #667eea;
+}
+
+.preset-blend-shapes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+  min-height: 60px;
+  align-items: flex-start;
+}
+
+.preset-blend-tag {
+  background: #f0f4ff;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #667eea;
+  font-family: monospace;
+}
+
+/* モーダル - プリセット編集（2カラム） */
+.modal-preset {
+  max-width: 1000px;
+}
+
+.preset-editor-layout {
+  display: flex;
+  gap: 25px;
+}
+
+.preset-preview-panel {
+  flex: 0 0 350px;
+  display: flex;
+  flex-direction: column;
+}
+
+.preset-form-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.vrm-preview-container {
+  width: 350px;
+  height: 450px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  position: relative;
+  position: sticky;
+  top: 0;
+}
+
+.vrm-preview-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.vrm-preview-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 800px) {
+  .preset-editor-layout {
+    flex-direction: column;
+  }
+
+  .preset-preview-panel {
+    flex: none;
+  }
+
+  .vrm-preview-container {
+    width: 100%;
+    height: 300px;
+  }
+}

@@ -1,4 +1,4 @@
-import type { Config, Expression } from "../shared/types.js";
+import type { Config, Expression, VrmConfig, VrmExpressionPreset } from "../shared/types.js";
 
 /**
  * データの永続化を管理するクラス
@@ -6,10 +6,14 @@ import type { Config, Expression } from "../shared/types.js";
 export class Storage {
   private configPath: string;
   private expressionsDir: string;
+  private vrmDir: string;
+  private vrmConfigPath: string;
 
   constructor(private dataDir: string) {
     this.configPath = `${dataDir}/config.json`;
     this.expressionsDir = `${dataDir}/expressions`;
+    this.vrmDir = `${dataDir}/vrm`;
+    this.vrmConfigPath = `${dataDir}/vrm-config.json`;
   }
 
   /**
@@ -27,6 +31,7 @@ export class Storage {
 
     // デフォルト設定
     return {
+      mode: "2d",
       defaultExpression: "",
       expressions: [],
     };
@@ -144,5 +149,202 @@ export class Storage {
       return undefined;
     }
     return this.getExpressionById(config.defaultExpression);
+  }
+
+  // ===== VRM関連メソッド =====
+
+  /**
+   * VRM設定を読み込む
+   */
+  async loadVrmConfig(): Promise<VrmConfig> {
+    try {
+      const file = Bun.file(this.vrmConfigPath);
+      if (await file.exists()) {
+        return await file.json();
+      }
+    } catch (e) {
+      console.error("Failed to load VRM config:", e);
+    }
+
+    return {
+      modelFileName: "",
+      presets: [],
+      defaultPreset: "",
+    };
+  }
+
+  /**
+   * VRM設定を保存
+   */
+  async saveVrmConfig(config: VrmConfig): Promise<void> {
+    await Bun.write(this.vrmConfigPath, JSON.stringify(config, null, 2));
+  }
+
+  /**
+   * VRMモデルファイルを保存
+   */
+  async saveVrmModel(file: File): Promise<string> {
+    // vrmディレクトリを確保
+    const fs = await import("fs/promises");
+    await fs.mkdir(this.vrmDir, { recursive: true });
+
+    const fileName = `model.vrm`;
+    const filePath = `${this.vrmDir}/${fileName}`;
+    await Bun.write(filePath, file);
+
+    // VRM設定を更新
+    const config = await this.loadVrmConfig();
+    config.modelFileName = fileName;
+    await this.saveVrmConfig(config);
+
+    return fileName;
+  }
+
+  /**
+   * VRMモデルファイルのパスを取得
+   */
+  getVrmModelPath(fileName: string): string {
+    return `${this.vrmDir}/${fileName}`;
+  }
+
+  /**
+   * VRMプリセットを追加
+   */
+  async addVrmPreset(preset: VrmExpressionPreset): Promise<void> {
+    const config = await this.loadVrmConfig();
+    config.presets.push(preset);
+
+    if (!config.defaultPreset) {
+      config.defaultPreset = preset.id;
+    }
+
+    await this.saveVrmConfig(config);
+  }
+
+  /**
+   * VRMプリセットを更新
+   */
+  async updateVrmPreset(
+    id: string,
+    updates: Partial<VrmExpressionPreset>
+  ): Promise<VrmExpressionPreset> {
+    const config = await this.loadVrmConfig();
+    const index = config.presets.findIndex((p) => p.id === id);
+
+    if (index === -1) {
+      throw new Error("VRM preset not found");
+    }
+
+    config.presets[index] = {
+      ...config.presets[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await this.saveVrmConfig(config);
+    return config.presets[index];
+  }
+
+  /**
+   * VRMプリセットを削除
+   */
+  async deleteVrmPreset(id: string): Promise<void> {
+    const config = await this.loadVrmConfig();
+    config.presets = config.presets.filter((p) => p.id !== id);
+
+    if (config.defaultPreset === id) {
+      config.defaultPreset = config.presets[0]?.id || "";
+    }
+
+    await this.saveVrmConfig(config);
+  }
+
+  /**
+   * プリセット名からVRMプリセットを取得
+   */
+  async getVrmPresetByName(name: string): Promise<VrmExpressionPreset | undefined> {
+    const config = await this.loadVrmConfig();
+    return config.presets.find((p) => p.name === name);
+  }
+
+  /**
+   * IDからVRMプリセットを取得
+   */
+  async getVrmPresetById(id: string): Promise<VrmExpressionPreset | undefined> {
+    const config = await this.loadVrmConfig();
+    return config.presets.find((p) => p.id === id);
+  }
+
+  /**
+   * デフォルトVRMプリセットを取得
+   */
+  async getDefaultVrmPreset(): Promise<VrmExpressionPreset | undefined> {
+    const config = await this.loadVrmConfig();
+    if (!config.defaultPreset) {
+      return undefined;
+    }
+    return this.getVrmPresetById(config.defaultPreset);
+  }
+
+  /**
+   * VRMファイルからブレンドシェイプ一覧を抽出
+   * VRMはglTF+JSON形式なので、バイナリからJSONチャンクを解析する
+   */
+  async extractBlendShapeNames(): Promise<string[]> {
+    const config = await this.loadVrmConfig();
+    if (!config.modelFileName) return [];
+
+    const filePath = this.getVrmModelPath(config.modelFileName);
+    const file = Bun.file(filePath);
+    if (!(await file.exists())) return [];
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const dataView = new DataView(buffer);
+
+      // glTFバイナリヘッダー: magic(4) + version(4) + length(4)
+      // チャンク0: length(4) + type(4) + JSON data
+      const jsonChunkLength = dataView.getUint32(12, true);
+      const jsonChunkType = dataView.getUint32(16, true);
+
+      // type == 0x4E4F534A ("JSON" in little-endian)
+      if (jsonChunkType !== 0x4E4F534A) return [];
+
+      const jsonBytes = new Uint8Array(buffer, 20, jsonChunkLength);
+      const jsonText = new TextDecoder().decode(jsonBytes);
+      const gltf = JSON.parse(jsonText);
+
+      const names: string[] = [];
+
+      // VRM 1.0 形式
+      const vrm1 = gltf.extensions?.VRMC_vrm;
+      if (vrm1?.expressions?.preset) {
+        for (const key of Object.keys(vrm1.expressions.preset)) {
+          names.push(key);
+        }
+      }
+      if (vrm1?.expressions?.custom) {
+        for (const key of Object.keys(vrm1.expressions.custom)) {
+          names.push(key);
+        }
+      }
+
+      // VRM 0.x 形式
+      const vrm0 = gltf.extensions?.VRM;
+      if (vrm0?.blendShapeMaster?.blendShapeGroups) {
+        for (const group of vrm0.blendShapeMaster.blendShapeGroups) {
+          if (group.presetName && group.presetName !== "unknown") {
+            names.push(group.presetName);
+          } else if (group.name) {
+            names.push(group.name);
+          }
+        }
+      }
+
+      return names;
+    } catch (e) {
+      console.error("Failed to extract blend shapes from VRM:", e);
+      return [];
+    }
   }
 }

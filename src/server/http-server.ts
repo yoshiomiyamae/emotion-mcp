@@ -7,6 +7,7 @@ import type {
   Expression,
   ExpressionChangeEvent,
   TransitionType,
+  VrmExpressionPreset,
 } from "../shared/types.js";
 
 // プロジェクトルートの絶対パスを取得
@@ -23,7 +24,7 @@ const clients = new Set<ServerWebSocket<unknown>>();
 let mcpRefCount = 0;
 
 /**
- * 表情変更をすべてのクライアントに通知
+ * 2D表情変更をすべてのクライアントに通知
  */
 export function broadcastExpressionChange(
   expression: Expression,
@@ -33,7 +34,32 @@ export function broadcastExpressionChange(
   const event: ExpressionChangeEvent = {
     type: "expression-change",
     data: {
+      mode: "2d",
       expression,
+      transition,
+      duration,
+    },
+  };
+
+  const message = JSON.stringify(event);
+  clients.forEach((client) => {
+    client.send(message);
+  });
+}
+
+/**
+ * VRM表情変更をすべてのクライアントに通知
+ */
+export function broadcastVrmExpressionChange(
+  preset: VrmExpressionPreset,
+  transition: TransitionType = "fade",
+  duration: number = 300
+) {
+  const event: ExpressionChangeEvent = {
+    type: "expression-change",
+    data: {
+      mode: "vrm",
+      preset,
       transition,
       duration,
     },
@@ -252,16 +278,165 @@ const server = serve({
     if (url.pathname === "/api/notify-change" && req.method === "POST") {
       try {
         const body = await req.json();
-        const { expression, transition, duration } = body;
+        const { mode, expression, preset, transition, duration } = body;
 
-        // WebSocketクライアントに通知
-        broadcastExpressionChange(expression, transition, duration);
+        if (mode === "vrm" && preset) {
+          broadcastVrmExpressionChange(preset, transition, duration);
+        } else {
+          broadcastExpressionChange(expression, transition, duration);
+        }
 
         return Response.json({ success: true }, { headers: corsHeaders });
       } catch (e) {
         console.error("Notify change error:", e);
         return Response.json(
           { error: "Notify failed" },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // API: モード切り替え
+    if (url.pathname === "/api/config/mode" && req.method === "PUT") {
+      try {
+        const body = await req.json();
+        const { mode } = body;
+        if (mode !== "2d" && mode !== "vrm") {
+          return Response.json(
+            { error: "Invalid mode. Must be '2d' or 'vrm'" },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+        await storage.updateConfig({ mode });
+        return Response.json({ success: true, mode }, { headers: corsHeaders });
+      } catch (e) {
+        console.error("Mode switch error:", e);
+        return Response.json(
+          { error: "Mode switch failed" },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // ===== VRM API =====
+
+    // VRMモデルファイル配信
+    if (url.pathname.startsWith("/vrm/") && req.method === "GET") {
+      const fileName = url.pathname.replace("/vrm/", "");
+      const file = Bun.file(join(projectRoot, "data/vrm", fileName));
+      if (await file.exists()) {
+        return new Response(file, {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            ...corsHeaders,
+          },
+        });
+      }
+      return new Response("Not Found", { status: 404, headers: corsHeaders });
+    }
+
+    // API: VRMモデルアップロード
+    if (url.pathname === "/api/vrm/upload" && req.method === "POST") {
+      try {
+        const formData = await req.formData();
+        const file = formData.get("file") as File;
+
+        if (!file) {
+          return Response.json(
+            { error: "Missing required field: file" },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+
+        const fileName = await storage.saveVrmModel(file);
+        return Response.json({ fileName }, { status: 201, headers: corsHeaders });
+      } catch (e) {
+        console.error("VRM upload error:", e);
+        return Response.json(
+          { error: "VRM upload failed" },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // API: VRM設定取得
+    if (url.pathname === "/api/vrm/config" && req.method === "GET") {
+      const vrmConfig = await storage.loadVrmConfig();
+      return Response.json(vrmConfig, { headers: corsHeaders });
+    }
+
+    // API: VRM設定更新
+    if (url.pathname === "/api/vrm/config" && req.method === "PUT") {
+      try {
+        const body = await req.json();
+        const vrmConfig = await storage.loadVrmConfig();
+        Object.assign(vrmConfig, body);
+        await storage.saveVrmConfig(vrmConfig);
+        return Response.json({ success: true }, { headers: corsHeaders });
+      } catch (e) {
+        console.error("VRM config update error:", e);
+        return Response.json(
+          { error: "VRM config update failed" },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // API: ブレンドシェイプ一覧取得
+    if (url.pathname === "/api/vrm/blend-shapes" && req.method === "GET") {
+      const names = await storage.extractBlendShapeNames();
+      return Response.json(names, { headers: corsHeaders });
+    }
+
+    // API: VRMプリセット追加
+    if (url.pathname === "/api/vrm/presets" && req.method === "POST") {
+      try {
+        const body = await req.json();
+        const preset: VrmExpressionPreset = {
+          id: crypto.randomUUID(),
+          name: body.name,
+          displayName: body.displayName || body.name,
+          blendShapes: body.blendShapes || [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await storage.addVrmPreset(preset);
+        return Response.json(preset, { status: 201, headers: corsHeaders });
+      } catch (e) {
+        console.error("VRM preset add error:", e);
+        return Response.json(
+          { error: "VRM preset add failed" },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // API: VRMプリセット更新
+    if (url.pathname.match(/^\/api\/vrm\/presets\/[^/]+$/) && req.method === "PUT") {
+      const id = url.pathname.split("/").pop()!;
+      try {
+        const body = await req.json();
+        const updated = await storage.updateVrmPreset(id, body);
+        return Response.json(updated, { headers: corsHeaders });
+      } catch (e) {
+        console.error("VRM preset update error:", e);
+        return Response.json(
+          { error: "VRM preset update failed" },
+          { status: 500, headers: corsHeaders }
+        );
+      }
+    }
+
+    // API: VRMプリセット削除
+    if (url.pathname.match(/^\/api\/vrm\/presets\/[^/]+$/) && req.method === "DELETE") {
+      const id = url.pathname.split("/").pop()!;
+      try {
+        await storage.deleteVrmPreset(id);
+        return Response.json({ success: true }, { headers: corsHeaders });
+      } catch (e) {
+        console.error("VRM preset delete error:", e);
+        return Response.json(
+          { error: "VRM preset delete failed" },
           { status: 500, headers: corsHeaders }
         );
       }

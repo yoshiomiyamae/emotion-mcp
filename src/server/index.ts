@@ -132,8 +132,7 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-// HTTPサーバーに通知するための簡易的な実装
-// 実際にはHTTPサーバーを別プロセスで起動し、HTTP APIで通知する
+// HTTPサーバーに2D表情変更を通知
 async function notifyExpressionChange(
   expressionName: string,
   transition: TransitionType,
@@ -145,14 +144,35 @@ async function notifyExpressionChange(
       throw new Error(`Expression "${expressionName}" not found`);
     }
 
-    // HTTPサーバーのAPIに通知
     await fetch(`http://localhost:${HTTP_PORT}/api/notify-change`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expression, transition, duration }),
+      body: JSON.stringify({ mode: "2d", expression, transition, duration }),
     });
   } catch (e) {
     console.error("Failed to notify expression change:", e);
+  }
+}
+
+// HTTPサーバーにVRM表情変更を通知
+async function notifyVrmExpressionChange(
+  presetName: string,
+  transition: TransitionType,
+  duration: number
+) {
+  try {
+    const preset = await storage.getVrmPresetByName(presetName);
+    if (!preset) {
+      throw new Error(`VRM preset "${presetName}" not found`);
+    }
+
+    await fetch(`http://localhost:${HTTP_PORT}/api/notify-change`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "vrm", preset, transition, duration }),
+    });
+  } catch (e) {
+    console.error("Failed to notify VRM expression change:", e);
   }
 }
 
@@ -226,6 +246,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (name) {
     case "list_expressions": {
       const config = await storage.loadConfig();
+
+      if (config.mode === "vrm") {
+        // VRMモード: プリセット一覧を返す
+        const vrmConfig = await storage.loadVrmConfig();
+        const presetList = vrmConfig.presets.map((p) => ({
+          name: p.name,
+          displayName: p.displayName,
+          isDefault: p.id === vrmConfig.defaultPreset,
+        }));
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `利用可能な表情（VRMモード）:\n${presetList
+                .map(
+                  (p) =>
+                    `- ${p.name}${p.displayName !== p.name ? ` (${p.displayName})` : ""}${p.isDefault ? " [デフォルト]" : ""}`
+                )
+                .join("\n")}`,
+            },
+          ],
+        };
+      }
+
+      // 2Dモード: 既存の画像表情一覧
       const expressionList = config.expressions.map((e) => ({
         name: e.name,
         displayName: e.displayName,
@@ -251,7 +297,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { expression, transition = "fade", duration = 300 } =
         args as unknown as ChangeExpressionParams;
 
-      // 表情が存在するか確認
+      const config = await storage.loadConfig();
+
+      if (config.mode === "vrm") {
+        // VRMモード: プリセット名で検索
+        const preset = await storage.getVrmPresetByName(expression);
+        if (!preset) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `エラー: 表情 "${expression}" が見つかりません。list_expressions ツールで利用可能な表情を確認してください。`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        await notifyVrmExpressionChange(expression, transition, duration);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `表情を「${preset.displayName}」に変更しました（トランジション: ${transition}, ${duration}ms）`,
+            },
+          ],
+        };
+      }
+
+      // 2Dモード: 既存の画像切り替え
       const expr = await storage.getExpressionByName(expression);
       if (!expr) {
         return {
@@ -265,7 +340,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      // 表情変更を通知（HTTPサーバー経由でWebSocketクライアントに送信）
       await notifyExpressionChange(expression, transition, duration);
 
       return {
@@ -279,6 +353,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "get_current_expression": {
+      const config = await storage.loadConfig();
+
+      if (config.mode === "vrm") {
+        const defaultPreset = await storage.getDefaultVrmPreset();
+        if (!defaultPreset) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "現在、表情が設定されていません。",
+              },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `現在の表情: ${defaultPreset.name} (${defaultPreset.displayName})`,
+            },
+          ],
+        };
+      }
+
       const defaultExpr = await storage.getDefaultExpression();
       if (!defaultExpr) {
         return {

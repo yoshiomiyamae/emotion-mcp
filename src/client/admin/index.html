@@ -5,33 +5,87 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Emotion MCP - 管理画面</title>
   <link rel="stylesheet" href="/admin/styles.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+      "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.2/lib/three-vrm.module.min.js"
+    }
+  }
+  </script>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>🎭 Emotion MCP - 立ち絵管理</h1>
+      <h1>Emotion MCP - 立ち絵管理</h1>
       <p class="subtitle">AIが使用する立ち絵を管理します</p>
     </header>
 
-    <div class="upload-area" id="uploadArea">
-      <input type="file" id="fileInput" accept="image/*" hidden>
-      <div class="upload-icon">📁</div>
-      <p class="upload-text">クリックまたはドラッグ&ドロップで画像をアップロード</p>
-      <p class="upload-hint">PNG, JPG, GIF対応</p>
+    <!-- モード切り替え -->
+    <div class="mode-switch" id="modeSwitch">
+      <button class="mode-btn active" data-mode="2d" onclick="switchMode('2d')">2D 画像</button>
+      <button class="mode-btn" data-mode="vrm" onclick="switchMode('vrm')">VRM 3D</button>
     </div>
 
-    <div class="expressions-grid" id="expressionsGrid">
-      <!-- 表情カードが動的に追加される -->
+    <!-- 2Dモードセクション -->
+    <div id="section2d">
+      <div class="upload-area" id="uploadArea">
+        <input type="file" id="fileInput" accept="image/*" hidden>
+        <div class="upload-icon">📁</div>
+        <p class="upload-text">クリックまたはドラッグ&ドロップで画像をアップロード</p>
+        <p class="upload-hint">PNG, JPG, GIF対応</p>
+      </div>
+
+      <div class="expressions-grid" id="expressionsGrid">
+        <!-- 表情カードが動的に追加される -->
+      </div>
+
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">🖼️</div>
+        <p>まだ立ち絵が登録されていません</p>
+        <p class="empty-hint">上のエリアから画像をアップロードしてください</p>
+      </div>
     </div>
 
-    <div class="empty-state" id="emptyState">
-      <div class="empty-icon">🖼️</div>
-      <p>まだ立ち絵が登録されていません</p>
-      <p class="empty-hint">上のエリアから画像をアップロードしてください</p>
+    <!-- VRMモードセクション -->
+    <div id="sectionVrm" style="display: none;">
+      <div class="upload-area" id="vrmUploadArea">
+        <input type="file" id="vrmFileInput" accept=".vrm" hidden>
+        <div class="upload-icon">🧍</div>
+        <p class="upload-text" id="vrmUploadText">クリックまたはドラッグ&ドロップでVRMモデルをアップロード</p>
+        <p class="upload-hint">.vrm ファイル対応</p>
+      </div>
+
+      <!-- ブレンドシェイプ一覧 -->
+      <div class="vrm-section" id="blendShapeSection" style="display: none;">
+        <h2 class="section-title">ブレンドシェイプ</h2>
+        <div class="blend-shape-list" id="blendShapeList">
+          <!-- 動的に追加 -->
+        </div>
+      </div>
+
+      <!-- プリセット管理 -->
+      <div class="vrm-section" id="presetSection" style="display: none;">
+        <div class="section-header">
+          <h2 class="section-title">表情プリセット</h2>
+          <button class="btn btn-primary" onclick="openPresetModal()">+ 新規プリセット</button>
+        </div>
+
+        <div class="expressions-grid" id="presetsGrid">
+          <!-- プリセットカードが動的に追加される -->
+        </div>
+
+        <div class="empty-state" id="presetEmptyState">
+          <div class="empty-icon">🎭</div>
+          <p>まだプリセットが登録されていません</p>
+          <p class="empty-hint">「新規プリセット」ボタンからプリセットを作成してください</p>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- アップロードモーダル -->
+  <!-- 2D画像アップロードモーダル -->
   <div class="modal" id="uploadModal">
     <div class="modal-overlay" onclick="closeModal()"></div>
     <div class="modal-content">
@@ -76,6 +130,67 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- VRMプリセット編集モーダル -->
+  <div class="modal" id="presetModal">
+    <div class="modal-overlay" onclick="closePresetModal()"></div>
+    <div class="modal-content modal-preset">
+      <h2 id="presetModalTitle">新しいプリセットを作成</h2>
+      <div class="preset-editor-layout">
+        <!-- 左: VRMプレビュー -->
+        <div class="preset-preview-panel">
+          <div class="vrm-preview-container" id="vrmPreviewContainer">
+            <div class="vrm-preview-placeholder" id="vrmPreviewPlaceholder">
+              <span>VRMプレビュー</span>
+            </div>
+          </div>
+        </div>
+        <!-- 右: フォーム -->
+        <div class="preset-form-panel">
+          <form id="presetForm">
+            <input type="hidden" id="presetEditId" value="">
+            <div class="form-group">
+              <label for="presetName">
+                プリセット名（英数字）<span class="required">*</span>
+              </label>
+              <input
+                type="text"
+                id="presetName"
+                name="name"
+                placeholder="例: happy"
+                pattern="[a-zA-Z0-9_-]+"
+                required
+              >
+              <small>AIがこの名前を使って表情を指定します</small>
+            </div>
+            <div class="form-group">
+              <label for="presetDisplayName">表示名</label>
+              <input
+                type="text"
+                id="presetDisplayName"
+                name="displayName"
+                placeholder="例: 笑顔"
+              >
+            </div>
+            <div class="form-group">
+              <label>ブレンドシェイプ</label>
+              <div class="blend-shape-sliders" id="presetSliders">
+                <!-- 動的に追加 -->
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-secondary" onclick="closePresetModal()">
+                キャンセル
+              </button>
+              <button type="submit" class="btn btn-primary">
+                保存
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 
