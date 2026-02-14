@@ -371,6 +371,22 @@ export class VrmRenderer {
   _updateBlink(delta) {
     if (!this.vrm?.expressionManager) return;
 
+    // 表情プリセットで目を閉じている場合はまばたきを抑制
+    const eyeBlendShapes = ["blink", "blinkLeft", "blinkRight"];
+    const hasEyeExpression = eyeBlendShapes.some(
+      (name) => (this.currentBlendShapes.get(name) || 0) > 0.3
+    );
+
+    if (hasEyeExpression) {
+      // まばたき中なら中断してタイマーリセット
+      if (this.isBlinking) {
+        this.isBlinking = false;
+        this.blinkTimer = 0;
+        this.nextBlinkTime = 3 + Math.random() * 4;
+      }
+      return;
+    }
+
     this.blinkTimer += delta;
 
     if (!this.isBlinking && this.blinkTimer >= this.nextBlinkTime) {
